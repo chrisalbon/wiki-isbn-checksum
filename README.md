@@ -66,17 +66,21 @@ python main.py --dumps-dir /path/to/dumps
 # Adjust context window around ISBNs
 python main.py --context 100
 
+# Adjust ISBN proximity requirement (stricter = fewer false positives)
+python main.py --proximity 3
+
 # Custom output file prefix
 python main.py --output-prefix wikipedia_isbn_analysis
 
 # Full example
-python main.py --dumps-dir ../dumps --context 75 --output-prefix run_2025
+python main.py --dumps-dir ../dumps --context 75 --proximity 10 --output-prefix run_2025
 ```
 
 ### Command Line Arguments
 
 - `--dumps-dir`: Directory containing Wikipedia dump files (default: `../dumps`)
 - `--context`: Number of context characters around ISBN (default: 50)
+- `--proximity`: Maximum characters between 'ISBN' and the number (default: 6)
 - `--output-prefix`: Output file prefix (default: timestamp)
 
 ## Input Format

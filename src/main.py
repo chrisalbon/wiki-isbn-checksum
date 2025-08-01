@@ -98,7 +98,7 @@ def has_isbn_nearby(text: str, match_start: int, match_end: int, max_distance: i
     return False
 
 
-def find_potential_isbns(text: str, context_chars: int = 50) -> list[dict]:
+def find_potential_isbns(text: str, context_chars: int = 50, proximity: int = 6) -> list[dict]:
     """
     Finds all potential ISBN numbers in text with surrounding context.
     Only returns numbers that have 'ISBN' nearby in the context.
@@ -132,8 +132,8 @@ def find_potential_isbns(text: str, context_chars: int = 50) -> list[dict]:
                 end = min(len(text_without_urls), match.end() + context_chars)
                 context = text_without_urls[start:end].strip()
                 
-                # Check if 'ISBN' appears within 6 characters before the match
-                if has_isbn_nearby(text_without_urls, match.start(), match.end()):
+                # Check if 'ISBN' appears within proximity characters before the match
+                if has_isbn_nearby(text_without_urls, match.start(), match.end(), proximity):
                     potential_isbns.append({
                         'isbn': isbn,
                         'context': context
@@ -145,8 +145,8 @@ def find_potential_isbns(text: str, context_chars: int = 50) -> list[dict]:
                 end = min(len(text_without_urls), match.end() + context_chars)
                 context = text_without_urls[start:end].strip()
                 
-                # Check if 'ISBN' appears within 6 characters before the match
-                if has_isbn_nearby(text_without_urls, match.start(), match.end()):
+                # Check if 'ISBN' appears within proximity characters before the match
+                if has_isbn_nearby(text_without_urls, match.start(), match.end(), proximity):
                     potential_isbns.append({
                         'isbn': isbn,
                         'context': context
@@ -248,7 +248,7 @@ def deduplicate_isbns(isbns: list[str]) -> list[str]:
     return unique_isbns
 
 
-def process_single_dump(dump_path: str, context_chars: int = 50) -> list[dict]:
+def process_single_dump(dump_path: str, context_chars: int = 50, proximity: int = 6) -> list[dict]:
     """
     Process a single Wikipedia dump file to extract and validate ISBNs.
     
@@ -273,7 +273,7 @@ def process_single_dump(dump_path: str, context_chars: int = 50) -> list[dict]:
         article_count += 1
         
         # Find ISBNs in article text
-        isbn_results = find_potential_isbns(text, context_chars)
+        isbn_results = find_potential_isbns(text, context_chars, proximity)
         
         if isbn_results:  # Only process articles with ISBNs
             valid_isbns = []
@@ -321,7 +321,7 @@ def process_single_dump(dump_path: str, context_chars: int = 50) -> list[dict]:
     return results
 
 
-def process_all_dumps(dumps_dir: str = "./dumps", context_chars: int = 50) -> tuple[list[dict], list[str], datetime, datetime]:
+def process_all_dumps(dumps_dir: str = "./dumps", context_chars: int = 50, proximity: int = 6) -> tuple[list[dict], list[str], datetime, datetime]:
     """
     Process all Wikipedia dump files in a directory.
     
@@ -346,7 +346,7 @@ def process_all_dumps(dumps_dir: str = "./dumps", context_chars: int = 50) -> tu
     start_time = datetime.now()
     
     for dump_path in dump_files:
-        dump_results = process_single_dump(dump_path, context_chars)
+        dump_results = process_single_dump(dump_path, context_chars, proximity)
         all_results.extend(dump_results)
     
     end_time = datetime.now()
@@ -529,12 +529,13 @@ def main():
     parser = argparse.ArgumentParser(description='Extract ISBNs from Wikipedia dump files')
     parser.add_argument('--dumps-dir', default='../dumps', help='Directory containing Wikipedia dump files (default: ../dumps)')
     parser.add_argument('--context', type=int, default=50, help='Number of context characters around ISBN (default: 50)')
+    parser.add_argument('--proximity', type=int, default=6, help='Maximum characters between ISBN and number (default: 6)')
     parser.add_argument('--output-prefix', help='Output file prefix (default: timestamp)')
     
     args = parser.parse_args()
     
     # Process all dump files
-    results, dump_files, start_time, end_time = process_all_dumps(args.dumps_dir, args.context)
+    results, dump_files, start_time, end_time = process_all_dumps(args.dumps_dir, args.context, args.proximity)
     
     if not results:
         print("No articles found to process.")
