@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+dumps/
+data/
+*.bz2
+*.xml
+*.csv
+*.txt
+
+# Keep example data files
+!data/.gitkeep
+!README.md
+!CLAUDE.md
+
+# Logs
+*.log
+
+# UV
+.uv/
+uv.lock
+
+# Claude
+.claude/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
