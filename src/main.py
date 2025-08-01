@@ -71,6 +71,33 @@ def extract_articles_from_dump(dump_path: str):
                 # Also clear the root element's children
                 root.clear()
 
+def has_isbn_nearby(text: str, match_start: int, match_end: int, max_distance: int = 6) -> bool:
+    """
+    Check if 'ISBN' appears within max_distance characters before the match.
+    
+    Args:
+        text: The full text
+        match_start: Start position of the ISBN candidate
+        match_end: End position of the ISBN candidate
+        max_distance: Maximum characters to look before the match
+        
+    Returns:
+        True if 'ISBN' is found within max_distance characters
+    """
+    # Look for ISBN within max_distance characters before the match
+    search_start = max(0, match_start - max_distance - 4)  # -4 for 'ISBN' length
+    search_text = text[search_start:match_start].lower()
+    
+    # Check if 'isbn' appears and is close enough
+    isbn_pos = search_text.rfind('isbn')
+    if isbn_pos != -1:
+        # Calculate actual distance from 'isbn' end to match start
+        actual_distance = len(search_text) - isbn_pos - 4
+        return actual_distance <= max_distance
+    
+    return False
+
+
 def find_potential_isbns(text: str, context_chars: int = 50) -> list[dict]:
     """
     Finds all potential ISBN numbers in text with surrounding context.
@@ -105,8 +132,8 @@ def find_potential_isbns(text: str, context_chars: int = 50) -> list[dict]:
                 end = min(len(text_without_urls), match.end() + context_chars)
                 context = text_without_urls[start:end].strip()
                 
-                # Check if 'ISBN' appears in the context (case insensitive)
-                if 'isbn' in context.lower():
+                # Check if 'ISBN' appears within 6 characters before the match
+                if has_isbn_nearby(text_without_urls, match.start(), match.end()):
                     potential_isbns.append({
                         'isbn': isbn,
                         'context': context
@@ -118,8 +145,8 @@ def find_potential_isbns(text: str, context_chars: int = 50) -> list[dict]:
                 end = min(len(text_without_urls), match.end() + context_chars)
                 context = text_without_urls[start:end].strip()
                 
-                # Check if 'ISBN' appears in the context (case insensitive)
-                if 'isbn' in context.lower():
+                # Check if 'ISBN' appears within 6 characters before the match
+                if has_isbn_nearby(text_without_urls, match.start(), match.end()):
                     potential_isbns.append({
                         'isbn': isbn,
                         'context': context
