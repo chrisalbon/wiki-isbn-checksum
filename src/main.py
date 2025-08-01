@@ -88,7 +88,8 @@ def find_potential_isbns(text: str, context_chars: int = 50) -> list[dict]:
     text_without_urls = re.sub(url_pattern, ' ', text)
     
     # Look for sequences of digits with optional hyphens/spaces
-    pattern = r'\b(\d[\d\-\s]{8,16}[\dXx])\b'
+    # Using negative lookbehind to ensure we don't start matching in the middle of a number
+    pattern = r'(?<![0-9])(\d[\d\-\s]{8,16}[\dXx])\b'
     
     potential_isbns = []
     
