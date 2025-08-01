@@ -27,10 +27,11 @@ This tool:
 1. **XML Processing**: Reads compressed Wikipedia dumps using streaming XML parsing
 2. **ISBN Detection**: 
    - First removes URLs from text to avoid false positives
-   - Uses regex pattern `\b(\d[\d\-\s]{8,16}[\dXx])\b` to find sequences of digits (with optional hyphens/spaces) that could be ISBNs
+   - Uses regex pattern `(?<![0-9])(\d[\d\-\s]{8,16}[\dXx])\b` to find sequences of digits (with optional hyphens/spaces) that could be ISBNs
+   - Pattern uses negative lookbehind to capture complete ISBN-13s (e.g., "978-0-12-802444-7" not just "0-12-802444-7")
    - Validates format: 10-digit ISBNs must have 9 digits followed by a digit or 'X'; 13-digit ISBNs must be all digits
-   - **Context filtering**: Only accepts numbers that have 'ISBN' (case-insensitive) within the surrounding context window (default 50 characters before/after)
-   - This context requirement ensures we only extract actual ISBNs, not random numbers that happen to be 10 or 13 digits
+   - **Proximity filtering**: Requires 'ISBN' to appear within 6 characters before the number
+   - This strict proximity check prevents false positives from other identifiers (LCCN, OCLC, etc.) that may appear in the same citation
 3. **Validation**: 
    - ISBN-10: Modulo 11 checksum (with 'X' support)
    - ISBN-13: Modulo 10 checksum with alternating weights
