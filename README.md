@@ -13,7 +13,7 @@ This tool:
 
 ## Key Features
 
-- **High Performance**: Processes ~330 articles/second
+- **High Performance**: Processes ~300-1500 articles/second
 - **Memory Efficient**: Streams XML data to handle multi-GB dump files
 - **Multi-Language Support**: Automatically detects and processes dumps from any Wikipedia language edition
 - **Context-Aware**: Only extracts numbers that appear near "ISBN" text to reduce false positives

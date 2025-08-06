@@ -1,3 +1,5 @@
+# Lets go hunt some ISBNs!
+
 import re
 import csv
 from datetime import datetime
@@ -6,6 +8,8 @@ import argparse
 import bz2
 import xml.etree.ElementTree as ET
 import glob
+from multiprocessing import Pool, cpu_count
+import sys
 
 def get_language_from_dump_path(dump_path: str) -> str:
     """
@@ -248,16 +252,42 @@ def deduplicate_isbns(isbns: list[str]) -> list[str]:
     return unique_isbns
 
 
-def process_single_dump(dump_path: str, context_chars: int = 50, proximity: int = 6) -> list[dict]:
+def process_single_dump_worker(args: tuple) -> tuple[str, list[dict], float, str, int]:
+    """
+    Worker function for multiprocessing that wraps process_single_dump.
+    
+    Args:
+        args: Tuple of (dump_path, context_chars, proximity)
+        
+    Returns:
+        Tuple of (dump_path, results, elapsed_time, error_message, article_count)
+    """
+    dump_path, context_chars, proximity = args
+    try:
+        # Run in quiet mode for parallel processing
+        results, elapsed, article_count = process_single_dump(dump_path, context_chars, proximity, quiet=True)
+        
+        # Print completion message for this dump
+        language = get_language_from_dump_path(dump_path)
+        print(f"[{language.upper()}] Completed: {os.path.basename(dump_path)} - Processed {article_count} articles, found ISBNs in {len(results)} ({elapsed:.1f}s)")
+        
+        return (dump_path, results, elapsed, None, article_count)
+    except Exception as e:
+        print(f"Error processing {dump_path}: {str(e)}", file=sys.stderr)
+        return (dump_path, [], 0.0, str(e), 0)
+
+
+def process_single_dump(dump_path: str, context_chars: int = 50, proximity: int = 6, quiet: bool = False) -> tuple[list[dict], float, int]:
     """
     Process a single Wikipedia dump file to extract and validate ISBNs.
     
     Args:
         dump_path: Path to the dump file
         context_chars: Number of context characters around ISBN
+        quiet: If True, suppress progress output (for parallel processing)
         
     Returns:
-        List of results for all articles in the dump
+        Tuple of (results list, processing time in seconds, total articles processed)
     """
     # Get language from dump filename
     language = get_language_from_dump_path(dump_path)
@@ -266,8 +296,9 @@ def process_single_dump(dump_path: str, context_chars: int = 50, proximity: int 
     article_count = 0
     start_time = datetime.now()
     
-    print(f"\nProcessing dump: {os.path.basename(dump_path)} (Language: {language})")
-    print("="*60)
+    if not quiet:
+        print(f"\nProcessing dump: {os.path.basename(dump_path)} (Language: {language})")
+        print("="*60)
     
     for title, text in extract_articles_from_dump(dump_path):
         article_count += 1
@@ -308,53 +339,113 @@ def process_single_dump(dump_path: str, context_chars: int = 50, proximity: int 
             results.append(article_result)
             
             # Progress update every 100 articles with ISBNs
-            if len(results) % 100 == 0:
+            if not quiet and len(results) % 100 == 0:
                 elapsed = (datetime.now() - start_time).total_seconds()
                 rate = article_count / elapsed if elapsed > 0 else 0
-                print(f"  Processed {article_count} articles, found ISBNs in {len(results)} ({rate:.1f} articles/sec)")
+                print(f"  [{language.upper()}] Processed {article_count} articles, found ISBNs in {len(results)} ({rate:.1f} articles/sec)")
     
     # Final stats for this dump
     elapsed = (datetime.now() - start_time).total_seconds()
-    print(f"  Completed: {article_count} articles processed in {elapsed:.1f}s")
-    print(f"  Found ISBNs in {len(results)} articles")
+    if not quiet:
+        print(f"  [{language.upper()}] Completed: {article_count} articles processed in {elapsed:.1f}s")
+        print(f"  [{language.upper()}] Found ISBNs in {len(results)} articles")
     
-    return results
+    return results, elapsed, article_count
 
 
-def process_all_dumps(dumps_dir: str = "./dumps", context_chars: int = 50, proximity: int = 6) -> tuple[list[dict], list[str], datetime, datetime]:
+def process_all_dumps(dumps_dir: str = "./dumps", context_chars: int = 50, proximity: int = 6, workers: int = 1) -> tuple[list[dict], list[str], datetime, datetime, dict[str, float], int, dict[str, int]]:
     """
     Process all Wikipedia dump files in a directory.
     
     Args:
         dumps_dir: Directory containing dump files
         context_chars: Number of context characters around ISBN
+        proximity: Maximum characters between ISBN and number
+        workers: Number of parallel workers (default 1 for sequential, -1 for all CPUs)
         
     Returns:
-        Tuple of (results, dump_files, start_time, end_time)
+        Tuple of (results, dump_files, start_time, end_time, language_times, total_articles_processed, language_article_counts)
     """
     all_results = []
+    language_times = {}  # Track processing time per language
+    total_articles_processed = 0  # Track total articles across all dumps
+    language_article_counts = {}  # Track total articles per language
     
     # Find all .bz2 files in dumps directory
     dump_files = sorted(glob.glob(os.path.join(dumps_dir, "*.bz2")))
     
     if not dump_files:
         print(f"No .bz2 dump files found in {dumps_dir}")
-        return [], [], datetime.now(), datetime.now()
+        return [], [], datetime.now(), datetime.now(), {}, 0, {}
     
     print(f"Found {len(dump_files)} dump file(s) to process")
     
+    # Determine number of workers
+    if workers == -1:
+        workers = cpu_count() - 1  # Leave one core free
+    workers = max(1, min(workers, len(dump_files), cpu_count()))
+    
     start_time = datetime.now()
     
-    for dump_path in dump_files:
-        dump_results = process_single_dump(dump_path, context_chars, proximity)
-        all_results.extend(dump_results)
+    if workers == 1:
+        # Sequential processing (original behavior)
+        print("Processing dumps sequentially...")
+        for dump_path in dump_files:
+            # Get language from filename
+            language = get_language_from_dump_path(dump_path)
+            
+            # Process dump and get results with timing
+            dump_results, dump_time, article_count = process_single_dump(dump_path, context_chars, proximity)
+            all_results.extend(dump_results)
+            total_articles_processed += article_count
+            
+            # Accumulate time for this language
+            if language not in language_times:
+                language_times[language] = 0.0
+            language_times[language] += dump_time
+            
+            # Track articles per language
+            if language not in language_article_counts:
+                language_article_counts[language] = 0
+            language_article_counts[language] += article_count
+    else:
+        # Parallel processing
+        print(f"Processing dumps in parallel with {workers} workers...")
+        
+        # Prepare arguments for worker function
+        worker_args = [(dump_path, context_chars, proximity) for dump_path in dump_files]
+        
+        # Process dumps in parallel
+        with Pool(workers) as pool:
+            # Use imap_unordered for better progress tracking
+            results = pool.map(process_single_dump_worker, worker_args)
+        
+        # Process results
+        for dump_path, dump_results, dump_time, error, article_count in results:
+            if error:
+                print(f"Failed to process {dump_path}: {error}")
+                continue
+                
+            language = get_language_from_dump_path(dump_path)
+            all_results.extend(dump_results)
+            total_articles_processed += article_count
+            
+            # Accumulate time for this language
+            if language not in language_times:
+                language_times[language] = 0.0
+            language_times[language] += dump_time
+            
+            # Track articles per language
+            if language not in language_article_counts:
+                language_article_counts[language] = 0
+            language_article_counts[language] += article_count
     
     end_time = datetime.now()
     
-    return all_results, dump_files, start_time, end_time
+    return all_results, dump_files, start_time, end_time, language_times, total_articles_processed, language_article_counts
 
 
-def save_report(results: list[dict], dump_files: list[str], start_time: datetime, end_time: datetime, filename: str = None) -> str:
+def save_report(results: list[dict], dump_files: list[str], start_time: datetime, end_time: datetime, language_times: dict[str, float] = None, total_articles_processed: int = None, language_article_counts: dict[str, int] = None, filename: str = None) -> str:
     """
     Save a detailed report of the ISBN extraction run.
     
@@ -363,6 +454,7 @@ def save_report(results: list[dict], dump_files: list[str], start_time: datetime
         dump_files: List of dump files processed
         start_time: When processing started
         end_time: When processing ended
+        language_times: Dictionary of processing times per language
         filename: Optional filename, defaults to timestamp.txt
         
     Returns:
@@ -377,7 +469,9 @@ def save_report(results: list[dict], dump_files: list[str], start_time: datetime
     filepath = os.path.join("../data", filename)
     
     # Calculate statistics
-    total_articles = len(results)
+    articles_with_isbns = len(results)
+    if total_articles_processed is None:
+        total_articles_processed = articles_with_isbns  # Fallback for backwards compatibility
     total_valid = sum(len(r['valid_isbns']) for r in results)
     total_invalid = sum(len(r['invalid_isbns']) for r in results)
     total_isbns = total_valid + total_invalid
@@ -416,23 +510,24 @@ def save_report(results: list[dict], dump_files: list[str], start_time: datetime
         
         f.write(f"Run Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Processing Time: {processing_time:.1f} seconds\n")
-        f.write(f"Processing Speed: {total_articles/processing_time:.1f} articles/second\n\n")
+        f.write(f"Processing Speed: {total_articles_processed/processing_time:.1f} articles/second\n\n")
         
-        f.write("Dump Files Processed:\n")
+        f.write(f"Wikis Processed: {len(dump_files)}\n")
+        f.write("Dump Files:\n")
         for dump_file in dump_files:
             f.write(f"  - {os.path.basename(dump_file)}\n")
         f.write("\n")
         
         f.write("Article Statistics:\n")
-        f.write(f"  Total articles processed: {total_articles:,}\n")
-        f.write(f"  Articles with ISBNs: {len([r for r in results if r['total_found'] > 0]):,}\n")
-        f.write(f"  Articles without ISBNs: {len([r for r in results if r['total_found'] == 0]):,}\n\n")
+        f.write(f"  Total articles processed: {total_articles_processed:,}\n")
+        f.write(f"  Articles with ISBNs: {articles_with_isbns:,}\n")
+        f.write(f"  Articles without ISBNs: {total_articles_processed - articles_with_isbns:,}\n\n")
         
         f.write("ISBN Statistics:\n")
         f.write(f"  Total ISBNs found: {total_isbns:,}\n")
         f.write(f"  Valid ISBNs (checksum passed): {total_valid:,}\n")
         f.write(f"  Invalid ISBNs (checksum failed): {total_invalid:,}\n")
-        f.write(f"  Pass rate: {(total_valid/total_isbns*100) if total_isbns > 0 else 0:.1f}%\n\n")
+        f.write(f"  Pass rate: {(total_valid/total_isbns*100) if total_isbns > 0 else 0:.2f}%\n\n")
         
         f.write("Unique ISBN Statistics:\n")
         f.write(f"  Unique valid ISBNs: {len(unique_valid):,}\n")
@@ -460,13 +555,19 @@ def save_report(results: list[dict], dump_files: list[str], start_time: datetime
                 lang_total = lang_data['valid_isbns'] + lang_data['invalid_isbns']
                 lang_pass_rate = (lang_data['valid_isbns']/lang_total*100) if lang_total > 0 else 0
                 f.write(f"\n  {lang.upper()}:\n")
-                f.write(f"    Articles: {lang_data['articles']:,}\n")
+                if language_article_counts and lang in language_article_counts:
+                    f.write(f"    Total articles processed: {language_article_counts[lang]:,}\n")
+                f.write(f"    Articles with ISBNs: {lang_data['articles']:,}\n")
                 f.write(f"    Total ISBNs: {lang_total:,}\n")
                 f.write(f"    Valid ISBNs: {lang_data['valid_isbns']:,}\n")
                 f.write(f"    Invalid ISBNs: {lang_data['invalid_isbns']:,}\n")
-                f.write(f"    Pass rate: {lang_pass_rate:.1f}%\n")
+                f.write(f"    Pass rate: {lang_pass_rate:.2f}%\n")
                 f.write(f"    Unique valid: {len(lang_data['unique_valid']):,}\n")
                 f.write(f"    Unique invalid: {len(lang_data['unique_invalid']):,}\n")
+                if language_times and lang in language_times:
+                    f.write(f"    Processing time: {language_times[lang]:.1f}s\n")
+                    if language_article_counts and lang in language_article_counts:
+                        f.write(f"    Speed: {language_article_counts[lang]/language_times[lang]:.1f} articles/sec\n")
     
     return filepath
 
@@ -530,12 +631,15 @@ def main():
     parser.add_argument('--dumps-dir', default='../dumps', help='Directory containing Wikipedia dump files (default: ../dumps)')
     parser.add_argument('--context', type=int, default=50, help='Number of context characters around ISBN (default: 50)')
     parser.add_argument('--proximity', type=int, default=6, help='Maximum characters between ISBN and number (default: 6)')
+    parser.add_argument('--workers', type=int, default=1, help='Number of parallel workers (-1 for all CPUs, default: 1)')
     parser.add_argument('--output-prefix', help='Output file prefix (default: timestamp)')
     
     args = parser.parse_args()
     
     # Process all dump files
-    results, dump_files, start_time, end_time = process_all_dumps(args.dumps_dir, args.context, args.proximity)
+    results, dump_files, start_time, end_time, language_times, total_articles_processed, language_article_counts = process_all_dumps(
+        args.dumps_dir, args.context, args.proximity, args.workers
+    )
     
     if not results:
         print("No articles found to process.")
@@ -548,11 +652,24 @@ def main():
     
     total_valid = sum(len(r['valid_isbns']) for r in results)
     total_invalid = sum(len(r['invalid_isbns']) for r in results)
-    total_articles = len(results)
+    articles_with_isbns = len(results)
+    total_time = (end_time - start_time).total_seconds()
     
-    print(f"Articles processed: {total_articles:,}")
+    print(f"Total articles processed: {total_articles_processed:,}")
+    print(f"Articles with ISBNs: {articles_with_isbns:,}")
     print(f"Total valid ISBNs found: {total_valid:,}")
     print(f"Total invalid ISBNs found: {total_invalid:,}")
+    print(f"Total processing time: {total_time:.1f}s")
+    
+    # Print time breakdown by language
+    if language_times:
+        print(f"\nProcessing time by language:")
+        for lang in sorted(language_times.keys()):
+            lang_time = language_times[lang]
+            lang_articles_with_isbns = len([r for r in results if r.get('language', 'en') == lang])
+            lang_total_articles = language_article_counts.get(lang, lang_articles_with_isbns) if language_article_counts else lang_articles_with_isbns
+            speed = lang_total_articles / lang_time if lang_time > 0 else 0
+            print(f"  {lang.upper()}: {lang_time:.1f}s ({lang_total_articles:,} articles processed, {lang_articles_with_isbns:,} with ISBNs, {speed:.1f} articles/sec)")
     
     # Generate timestamp for both files
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -565,7 +682,7 @@ def main():
         report_filename = f"{timestamp}.txt"
         csv_filename = f"{timestamp}.csv"
     
-    report_path = save_report(results, dump_files, start_time, end_time, report_filename)
+    report_path = save_report(results, dump_files, start_time, end_time, language_times, total_articles_processed, language_article_counts, report_filename)
     print(f"\nDetailed report saved to: {report_path}")
     
     # Save failed ISBNs to CSV
