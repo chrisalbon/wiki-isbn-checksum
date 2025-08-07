@@ -1,7 +1,16 @@
 [project]
-name = "src"
-version = "0.1.0"
-description = "Add your description here"
+name = "wiki-isbn-validator"
+version = "1.0.0"
+description = "Extract and validate ISBN checksums from Wikipedia XML dumps"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
+
+[project.optional-dependencies]
+download = [
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+wiki-isbn = "main:main"
+wiki-isbn-download = "download_wiki_dumps:main"

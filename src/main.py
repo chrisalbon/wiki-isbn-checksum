@@ -39,23 +39,32 @@ def extract_articles_from_dump(dump_path: str):
     Yields:
         Tuples of (title, text) for each article
     """
-    # Define namespace - MediaWiki 0.11 format
-    ns = {'mw': 'http://www.mediawiki.org/xml/export-0.11/'}
-    
     with bz2.open(dump_path, 'rt', encoding='utf-8') as f:
-        # Parse with namespace awareness
+        # Parse without namespace first to detect version
         context = ET.iterparse(f, events=('start', 'end'))
         context = iter(context)
         
-        # Get the root element
+        # Get the root element and detect namespace
         event, root = next(context)
+        
+        # Extract namespace from root tag
+        namespace = None
+        if '}' in root.tag:
+            namespace = root.tag.split('}')[0][1:]
+        
+        # Define namespace dict based on detected version
+        if namespace:
+            ns = {'mw': namespace}
+        else:
+            # Fallback to 0.11 if no namespace detected
+            ns = {'mw': 'http://www.mediawiki.org/xml/export-0.11/'}
         
         for event, elem in context:
             # Handle namespaced tags
             tag = elem.tag.split('}')[1] if '}' in elem.tag else elem.tag
             
             if event == 'end' and tag == 'page':
-                # Extract page data
+                # Extract page data using detected namespace
                 title_elem = elem.find('.//mw:title', ns)
                 text_elem = elem.find('.//mw:text', ns)
                 ns_elem = elem.find('.//mw:ns', ns)

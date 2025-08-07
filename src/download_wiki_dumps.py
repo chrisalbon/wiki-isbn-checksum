@@ -23,7 +23,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
 # Constants
-TARGET_DIR = "/Volumes/storage_1/wiki_dumps"
+DEFAULT_TARGET_DIR = "../dumps"
 MAX_CONNECTIONS = 3
 CHUNK_SIZE = 8192 * 16  # 128KB chunks
 TIMEOUT = 30
@@ -310,7 +310,7 @@ def find_available_dump(lang_code, session=None, retry_count=0, request_delay=2)
         return None
 
 
-def download_wikipedia_dumps(languages=None, target_dir=TARGET_DIR, dry_run=False, max_connections=MAX_CONNECTIONS, request_delay=2):
+def download_wikipedia_dumps(languages=None, target_dir=DEFAULT_TARGET_DIR, dry_run=False, max_connections=MAX_CONNECTIONS, request_delay=2):
     """Main function to download all Wikipedia dumps."""
     
     # Get list of all Wikipedia languages if not provided
@@ -406,8 +406,8 @@ def download_wikipedia_dumps(languages=None, target_dir=TARGET_DIR, dry_run=Fals
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Download Wikipedia dumps for all languages')
-    parser.add_argument('--target-dir', default=TARGET_DIR, 
-                        help=f'Target directory for downloads (default: {TARGET_DIR})')
+    parser.add_argument('--target-dir', default=DEFAULT_TARGET_DIR, 
+                        help=f'Target directory for downloads (default: {DEFAULT_TARGET_DIR})')
     parser.add_argument('--languages', nargs='+', 
                         help='Specific languages to download (default: all)')
     parser.add_argument('--max-connections', type=int, default=MAX_CONNECTIONS,

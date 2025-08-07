@@ -11,17 +11,6 @@ This tool:
 - Generates detailed reports on validation results
 - Exports invalid ISBNs with context for manual review
 
-## Key Features
-
-- **High Performance**: Processes ~300-1500 articles/second
-- **Memory Efficient**: Streams XML data to handle multi-GB dump files
-- **Multi-Language Support**: Automatically detects and processes dumps from any Wikipedia language edition
-- **Context-Aware**: Only extracts numbers that appear near "ISBN" text to reduce false positives
-- **Comprehensive Validation**: Implements proper checksum algorithms for both ISBN-10 and ISBN-13
-- **Detailed Reporting**: Provides statistics on total/unique ISBNs, pass rates, and format breakdown
-- **Language Analysis**: Breaks down ISBN statistics by Wikipedia language when processing multiple languages
-- **Deduplication**: Normalizes ISBNs to catch differently-formatted duplicates
-
 ## How It Works
 
 1. **XML Processing**: Reads compressed Wikipedia dumps using streaming XML parsing
@@ -44,9 +33,15 @@ This tool:
 git clone <repository-url>
 cd wiki_isbn_checksum
 
-# Install dependencies (if using uv)
+# Using uv (recommended)
 cd src
-uv pip install -r requirements.txt
+uv pip install -e .
+
+# Optional: Install with download capability
+uv pip install -e ".[download]"
+
+# Or using standard pip
+pip install -e .
 ```
 
 ## Usage
@@ -70,11 +65,14 @@ python main.py --context 100
 # Default is 6, which handles "ISBN: 978-0-12-345678-9" (2 chars) with room to spare
 python main.py --proximity 4
 
+# Enable parallel processing (use -1 for all CPU cores)
+python main.py --workers 4
+
 # Custom output file prefix
 python main.py --output-prefix wikipedia_isbn_analysis
 
-# Full example
-python main.py --dumps-dir ../dumps --context 75 --proximity 10 --output-prefix run_2025
+# Full example with parallel processing
+python main.py --dumps-dir ../dumps --context 75 --proximity 10 --workers -1 --output-prefix run_2025
 ```
 
 ### Command Line Arguments
@@ -82,22 +80,35 @@ python main.py --dumps-dir ../dumps --context 75 --proximity 10 --output-prefix 
 - `--dumps-dir`: Directory containing Wikipedia dump files (default: `../dumps`)
 - `--context`: Number of context characters around ISBN (default: 50)
 - `--proximity`: Maximum characters between end of 'ISBN' and start of number (default: 6)
+- `--workers`: Number of parallel workers (-1 for all CPUs, default: 1)
 - `--output-prefix`: Output file prefix (default: timestamp)
 
 ## Input Format
 
 Place Wikipedia XML dump files (`.bz2` format) in the dumps directory. Files should follow the naming pattern:
 ```
-{lang}wiki-YYYYMMDD-pages-articles*.xml-p*p*.bz2
+{lang}wiki-YYYYMMDD-pages-articles-multistream.xml.bz2
 ```
 
 Where `{lang}` is the language code (e.g., `en` for English, `de` for German, `fr` for French).
 
-Download dumps from: 
+### Downloading Dumps
+
+You can use the included `download_wiki_dumps.py` script to download dumps automatically:
+
+```bash
+python download_wiki_dumps.py
+```
+
+Or download manually from:
 - English: https://dumps.wikimedia.org/enwiki/
 - German: https://dumps.wikimedia.org/dewiki/
 - French: https://dumps.wikimedia.org/frwiki/
 - Other languages: https://dumps.wikimedia.org/{lang}wiki/
+
+### Compatibility
+
+The tool automatically detects and handles different XML namespace versions, making it compatible with Wikipedia dumps from any year (tested with 2021, 2022, and 2025 dumps).
 
 ## Output Files
 
@@ -118,27 +129,40 @@ The tool generates two output files in the `data/` directory:
      - Format type
      - Surrounding context
 
-## Results
-
-In testing on Wikipedia dumps, the tool found:
-- **99.3% pass rate** for ISBN checksums
-- 433,761 total ISBNs across 45,401 articles
-- 286,281 unique valid ISBNs
-- Only 3,226 invalid checksums (0.7%)
-
-The small percentage of failures likely represents typos in Wikipedia articles or edge cases in extraction.
 
 ## Performance
 
-- Processes approximately 322 articles per second
+- Processes approximately 300-9000+ articles per second depending on content and hardware
+- Supports parallel processing across multiple CPU cores
 - Memory efficient - handles multi-GB dump files
 - Progress updates every 100 articles with ISBNs
 
 ## Requirements
 
 - Python 3.11+
-- Standard library only (no external dependencies)
+- No external dependencies for core ISBN validation
+- Optional: `requests` library for automated dump downloading
 
 ## License
 
-[Add appropriate license]
+MIT License
+
+Copyright (c) 2025 Chris Albon
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
